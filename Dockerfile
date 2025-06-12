@@ -25,11 +25,11 @@ RUN apk add --no-cache --update \
   unzip
 
 WORKDIR /server
-COPY index.js package* /server
+COPY index.js package* /server/
 COPY /server /server/server
 
 RUN case "$TARGETPLATFORM" in \
-  "linux/amd64") \
+  "linux/amd64"|"") \
   curl -L -o /tmp/library.zip "https://github.com/mikiher/nunicode-sqlite/releases/download/v1.2/libnusqlite3-linux-musl-x64.zip" ;; \
   "linux/arm64") \
   curl -L -o /tmp/library.zip "https://github.com/mikiher/nunicode-sqlite/releases/download/v1.2/libnusqlite3-linux-musl-arm64.zip" ;; \

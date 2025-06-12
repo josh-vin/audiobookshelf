@@ -17,10 +17,9 @@
         </div>
       </div>
     </div>
-
     <div class="flex justify-center mb-2">
       <div class="w-full max-w-2xl">
-        <p class="text-lg">{{ $strings.HeaderMetadataToEmbed }}</p>
+        <p class="text-lg">{{ isEditTool ? $strings.HeaderEditMetadata || 'Edit Metadata' : $strings.HeaderMetadataToEmbed }}</p>
       </div>
       <div class="w-full max-w-2xl"></div>
     </div>
@@ -32,14 +31,12 @@
           <div class="w-2/3 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelValue }}</div>
         </div>
         <div class="w-full max-h-72 overflow-auto">
-          <template v-for="(value, key, index) in metadataObject">
-            <div :key="key" class="flex py-1 px-4 text-sm" :class="index % 2 === 0 ? 'bg-primary/25' : ''">
-              <div class="w-1/3 font-semibold">{{ key }}</div>
-              <div class="w-2/3">
-                {{ value }}
-              </div>
+          <div v-for="(value, key, index) in metadataObject" :key="key" class="flex py-1 px-4 text-sm" :class="index % 2 === 0 ? 'bg-primary/25' : ''">
+            <div class="w-1/3 font-semibold">{{ key }}</div>
+            <div class="w-2/3">
+              {{ value }}
             </div>
-          </template>
+          </div>
         </div>
       </div>
       <div class="w-full max-w-2xl border border-white/10 bg-bg">
@@ -50,17 +47,15 @@
         </div>
         <div class="w-full max-h-72 overflow-auto">
           <p v-if="!metadataChapters.length" class="py-5 text-center text-gray-200">{{ $strings.MessageNoChapters }}</p>
-          <template v-for="(chapter, index) in metadataChapters">
-            <div :key="index" class="flex py-1 px-4 text-sm" :class="index % 2 === 1 ? 'bg-primary/25' : ''">
-              <div class="grow font-semibold">{{ chapter.title }}</div>
-              <div class="w-24">
-                {{ $secondsToTimestamp(chapter.start) }}
-              </div>
-              <div class="w-24">
-                {{ $secondsToTimestamp(chapter.end) }}
-              </div>
+          <div v-for="(chapter, index) in metadataChapters" :key="index" class="flex py-1 px-4 text-sm" :class="index % 2 === 1 ? 'bg-primary/25' : ''">
+            <div class="grow font-semibold">{{ chapter.title }}</div>
+            <div class="w-24">
+              {{ $secondsToTimestamp(chapter.start) }}
             </div>
-          </template>
+            <div class="w-24">
+              {{ $secondsToTimestamp(chapter.end) }}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -82,8 +77,26 @@
         <p v-else-if="taskFailed" class="text-error text-lg font-semibold">{{ $strings.MessageEmbedFailed }} {{ taskError }}</p>
         <p v-else class="text-success text-lg font-semibold">{{ $strings.MessageEmbedFinished }}</p>
       </div>
+      <!-- metadata edit interface -->
+      <div v-else-if="isEditTool" class="w-full mb-4">
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center space-x-2">
+            <ui-btn color="bg-primary" @click.stop="formatJson">{{ $strings.ButtonFormatJson || 'Format JSON' }}</ui-btn>
+            <ui-btn color="bg-warning" @click.stop="resetJson">{{ $strings.ButtonResetJson || 'Reset' }}</ui-btn>
+          </div>
+          <ui-btn color="bg-success" :loading="savingMetadata" @click.stop="saveMetadata">{{ $strings.ButtonSaveMetadata || 'Save Metadata' }}</ui-btn>
+        </div>
+
+        <!-- JSON Editor -->
+        <div class="mb-4">
+          <label class="text-sm font-semibold uppercase text-gray-200 mb-2 block">{{ $strings.LabelFullMetadataJson || 'Full Metadata JSON' }}</label>
+          <textarea v-model="editableMetadataJson" class="w-full h-96 p-4 bg-gray-800 text-white border border-gray-600 rounded font-mono text-sm" placeholder="Loading metadata..." :class="{ 'border-red-500': jsonError }"></textarea>
+          <p v-if="jsonError" class="text-red-400 text-sm mt-1">{{ jsonError }}</p>
+          <p class="text-gray-400 text-xs mt-1">{{ $strings.LabelJsonEditorHint || 'Edit the JSON above to modify metadata, chapters, and all other properties. Click Format JSON to prettify the structure.' }}</p>
+        </div>
+      </div>
       <!-- m4b embed action buttons -->
-      <div v-else class="w-full flex items-center mb-4">
+      <div v-else-if="isM4BTool" class="w-full flex items-center mb-4">
         <div class="grow" />
 
         <ui-btn v-if="!isTaskFinished && processing" color="bg-error" :loading="isCancelingEncode" class="mr-2" @click.stop="cancelEncodeClick">{{ $strings.ButtonCancelEncode }}</ui-btn>
@@ -103,13 +116,16 @@
       <div v-else-if="isM4BTool" class="mb-4">
         <widgets-encoder-options-card ref="encoderOptionsCard" :audio-tracks="audioFiles" :disabled="processing || isTaskFinished" />
       </div>
-
       <div class="mb-4">
         <div v-if="isEmbedTool" class="flex items-start mb-2">
           <span class="material-symbols text-base text-warning pt-1">star</span>
           <p class="text-gray-200 ml-2">{{ $strings.LabelEncodingInfoEmbedded }}</p>
         </div>
-        <div v-else class="flex items-start mb-2">
+        <div v-else-if="isEditTool" class="flex items-start mb-2">
+          <span class="material-symbols text-base text-info pt-1">edit</span>
+          <p class="text-gray-200 ml-2">{{ $strings.LabelEditMetadataInfo || 'Edit the metadata fields above and click Save to update the audiobook information.' }}</p>
+        </div>
+        <div v-else-if="isM4BTool" class="flex items-start mb-2">
           <span class="material-symbols text-base text-warning pt-1">star</span>
           <p class="text-gray-200 ml-2">
             {{ $strings.LabelEncodingFinishedM4B }} <span class="rounded-md bg-neutral-600 text-sm text-white py-0.5 px-1 font-mono">.../{{ libraryItemRelPath }}/</span>.
@@ -153,32 +169,30 @@
           <div class="w-16 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelSize }}</div>
           <div class="w-24"></div>
         </div>
-        <template v-for="file in audioFiles">
-          <div :key="file.index" class="flex py-2 px-4 text-xs sm:text-sm" :class="file.index % 2 === 0 ? 'bg-primary/25' : ''">
-            <div class="w-10 min-w-10">{{ file.index }}</div>
-            <div class="grow">
-              {{ file.metadata.filename }}
-            </div>
-            <div class="w-20 min-w-20 text-gray-200 hidden lg:block">{{ file.channels || 'unknown' }} ({{ file.channelLayout || 'unknown' }})</div>
-            <div class="w-16 min-w-16 text-gray-200 hidden md:block">
-              {{ file.codec || 'unknown' }}
-            </div>
-            <div class="w-16 min-w-16 text-gray-200 hidden md:block">
-              {{ $bytesPretty(file.bitRate || 0, 0) }}
-            </div>
-            <div class="w-16 min-w-16 text-gray-200">
-              {{ $bytesPretty(file.metadata.size) }}
-            </div>
-            <div class="w-24 min-w-24">
-              <div class="flex justify-center">
-                <span v-if="audioFilesFinished[file.ino]" class="material-symbols text-xl text-success leading-none">check_circle</span>
-                <div v-else-if="audioFilesEncoding[file.ino]">
-                  <span class="font-mono text-success leading-none">{{ audioFilesEncoding[file.ino] }}</span>
-                </div>
+        <div v-for="file in audioFiles" :key="file.index" class="flex py-2 px-4 text-xs sm:text-sm" :class="file.index % 2 === 0 ? 'bg-primary/25' : ''">
+          <div class="w-10 min-w-10">{{ file.index }}</div>
+          <div class="grow">
+            {{ file.metadata.filename }}
+          </div>
+          <div class="w-20 min-w-20 text-gray-200 hidden lg:block">{{ file.channels || 'unknown' }} ({{ file.channelLayout || 'unknown' }})</div>
+          <div class="w-16 min-w-16 text-gray-200 hidden md:block">
+            {{ file.codec || 'unknown' }}
+          </div>
+          <div class="w-16 min-w-16 text-gray-200 hidden md:block">
+            {{ $bytesPretty(file.bitRate || 0, 0) }}
+          </div>
+          <div class="w-16 min-w-16 text-gray-200">
+            {{ $bytesPretty(file.metadata.size) }}
+          </div>
+          <div class="w-24 min-w-24">
+            <div class="flex justify-center">
+              <span v-if="audioFilesFinished[file.ino]" class="material-symbols text-xl text-success leading-none">check_circle</span>
+              <div v-else-if="audioFilesEncoding[file.ino]">
+                <span class="font-mono text-success leading-none">{{ audioFilesEncoding[file.ino] }}</span>
               </div>
             </div>
           </div>
-        </template>
+        </div>
       </div>
     </div>
   </div>
@@ -230,7 +244,10 @@ export default {
         bitrate: '128k',
         channels: '2',
         codec: 'aac'
-      }
+      }, // Edit tool data
+      savingMetadata: false,
+      editableMetadataJson: '',
+      jsonError: null
     }
   },
   watch: {
@@ -258,6 +275,9 @@ export default {
     isM4BTool() {
       return this.selectedTool === 'm4b'
     },
+    isEditTool() {
+      return this.selectedTool === 'edit'
+    },
     libraryItemId() {
       return this.libraryItem.id
     },
@@ -282,7 +302,8 @@ export default {
     availableTools() {
       return [
         { value: 'embed', text: this.$strings.LabelToolsEmbedMetadata },
-        { value: 'm4b', text: this.$strings.LabelToolsM4bEncoder }
+        { value: 'm4b', text: this.$strings.LabelToolsM4bEncoder },
+        { value: 'edit', text: this.$strings.LabelToolsEditMetadata || 'Edit Metadata' }
       ]
     },
     taskFailed() {
@@ -306,6 +327,7 @@ export default {
     task() {
       if (this.isEmbedTool) return this.embedTask
       else if (this.isM4BTool) return this.encodeTask
+      else if (this.isEditTool) return null // Edit tool doesn't use background tasks
       return null
     },
     taskRunning() {
@@ -322,6 +344,88 @@ export default {
     }
   },
   methods: {
+    initEditableMetadata() {
+      // Create a comprehensive metadata object including everything
+      const fullMetadata = {
+        // Basic metadata
+        metadata: { ...this.mediaMetadata },
+        // Chapters
+        chapters: [...(this.metadataChapters || [])],
+        // Audio files info (read-only reference)
+        audioFiles: this.audioFiles.map((file) => ({
+          index: file.index,
+          filename: file.metadata.filename,
+          size: file.metadata.size,
+          duration: file.duration,
+          codec: file.codec,
+          bitRate: file.bitRate,
+          channels: file.channels,
+          channelLayout: file.channelLayout
+        }))
+      }
+
+      this.editableMetadataJson = JSON.stringify(fullMetadata, null, 2)
+      this.jsonError = null
+    },
+    formatJson() {
+      try {
+        const parsed = JSON.parse(this.editableMetadataJson)
+        this.editableMetadataJson = JSON.stringify(parsed, null, 2)
+        this.jsonError = null
+      } catch (error) {
+        this.jsonError = 'Invalid JSON: ' + error.message
+      }
+    },
+    resetJson() {
+      this.initEditableMetadata()
+    },
+    async saveMetadata() {
+      this.savingMetadata = true
+      this.jsonError = null
+
+      try {
+        // Parse and validate the JSON
+        let parsedData
+        try {
+          parsedData = JSON.parse(this.editableMetadataJson)
+        } catch (error) {
+          this.jsonError = 'Invalid JSON: ' + error.message
+          return
+        }
+
+        // Extract metadata and chapters from the parsed data
+        const updatedMetadata = parsedData.metadata || {}
+        const updatedChapters = parsedData.chapters || []
+
+        // Build the payload for the API
+        const payload = {
+          media: {
+            metadata: updatedMetadata,
+            chapters: updatedChapters
+          }
+        }
+
+        await this.$axios.$patch(`/api/items/${this.libraryItemId}/media`, payload.media)
+
+        this.$toast.success(this.$strings.ToastItemSaveSuccess || 'Metadata updated successfully')
+
+        // Refresh the library item data
+        const updatedItem = await this.$axios.$get(`/api/items/${this.libraryItemId}?expanded=1`)
+        this.libraryItem = updatedItem
+
+        // Re-fetch metadata object for the current view
+        this.fetchMetadataEmbedObject()
+
+        // Reinitialize the JSON editor with the updated data
+        this.initEditableMetadata()
+      } catch (error) {
+        console.error('Failed to save metadata', error)
+        const errorMsg = error.response?.data || 'Failed to save metadata'
+        this.$toast.error(errorMsg)
+      } finally {
+        this.savingMetadata = false
+      }
+    },
     toggleBackupAudioFiles(val) {
       localStorage.setItem('embedMetadataShouldBackup', val ? 1 : 0)
     },
@@ -399,12 +503,24 @@ export default {
     selectedToolUpdated() {
       let newurl = window.location.protocol + '//' + window.location.host + window.location.pathname + `?tool=${this.selectedTool}`
       window.history.replaceState({ path: newurl }, '', newurl)
+
+      // Initialize editable metadata when edit tool is selected
+      if (this.isEditTool) {
+        this.initEditableMetadata()
+      }
     },
     init() {
       this.fetchMetadataEmbedObject()
       if (this.$route.query.tool === 'm4b') {
         if (this.availableTools.some((t) => t.value === 'm4b')) {
           this.selectedTool = 'm4b'
+        } else {
+          this.selectedToolUpdated()
+        }
+      } else if (this.$route.query.tool === 'edit') {
+        if (this.availableTools.some((t) => t.value === 'edit')) {
+          this.selectedTool = 'edit'
+          this.initEditableMetadata()
         } else {
           this.selectedToolUpdated()
         }

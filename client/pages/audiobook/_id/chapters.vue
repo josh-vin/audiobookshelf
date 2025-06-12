@@ -77,11 +77,9 @@
                 >
                   <span class="material-symbols text-sm">remove</span>
                 </button>
-              </ui-tooltip>
-
-              <div class="flex-1 min-w-0">
-                <ui-text-input v-if="showSecondInputs" v-model="chapter.start" type="number" class="text-xs" @change="checkChapters" />
-                <ui-time-picker v-else class="text-xs" v-model="chapter.start" :show-three-digit-hour="mediaDuration >= 360000" @change="checkChapters" />
+              </ui-tooltip>              <div class="flex-1 min-w-0">
+                <ui-text-input v-if="showSecondInputs" v-model="chapter.start" type="number" class="text-xs" @change="debouncedCheckChapters" />
+                <ui-time-picker v-else class="text-xs" v-model="chapter.start" :show-three-digit-hour="mediaDuration >= 360000" @change="debouncedCheckChapters" />
               </div>
 
               <ui-tooltip :text="$strings.TooltipAddOneSecond" direction="bottom">
@@ -90,9 +88,8 @@
                 </button>
               </ui-tooltip>
             </div>
-          </div>
-          <div class="grow px-1">
-            <ui-text-input v-model="chapter.title" @change="checkChapters" class="text-xs min-w-52" />
+          </div>          <div class="grow px-1">
+            <ui-text-input v-model="chapter.title" @change="debouncedCheckChapters" class="text-xs min-w-52" />
           </div>
           <div class="w-7 min-w-7 px-1 py-1">
             <div class="flex items-center justify-center">
@@ -149,29 +146,79 @@
           </div>
         </div>
       </div>
-
       <div class="w-full max-w-xl py-4 px-2">
-        <div class="flex items-center mb-4 py-1">
-          <p class="text-lg font-semibold">{{ $strings.HeaderAudioTracks }}</p>
-          <div class="grow" />
-          <ui-btn small @click="setChaptersFromTracks">{{ $strings.ButtonSetChaptersFromTracks }}</ui-btn>
-          <ui-tooltip :text="$strings.MessageSetChaptersFromTracksDescription" direction="top" class="flex items-center mx-1 cursor-default">
-            <span class="material-symbols text-xl text-gray-200">info</span>
-          </ui-tooltip>
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-gray-600 mb-4">
+          <button v-for="tab in chapterSourceTabs" :key="tab.id" @click="activeTab = tab.id" class="px-4 py-2 text-sm font-medium transition-colors duration-200" :class="activeTab === tab.id ? 'text-white border-b-2 border-primary' : 'text-gray-400 hover:text-gray-200'">
+            {{ tab.label }}
+          </button>
         </div>
-        <div class="flex text-xs uppercase text-gray-300 font-semibold mb-2">
-          <div class="grow">{{ $strings.LabelFilename }}</div>
-          <div class="w-20">{{ $strings.LabelDuration }}</div>
-          <div class="w-20 hidden md:block text-center">{{ $strings.HeaderChapters }}</div>
+
+        <!-- Audio Tracks Tab -->
+        <div v-if="activeTab === 'tracks'" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <p class="text-lg font-semibold">{{ $strings.HeaderAudioTracks }}</p>
+            <div class="flex items-center">
+              <ui-btn small @click="setChaptersFromTracks">{{ $strings.ButtonSetChaptersFromTracks }}</ui-btn>
+              <ui-tooltip :text="$strings.MessageSetChaptersFromTracksDescription" direction="top" class="flex items-center mx-1 cursor-default">
+                <span class="material-symbols text-xl text-gray-200">info</span>
+              </ui-tooltip>
+            </div>
+          </div>
+          <div class="flex text-xs uppercase text-gray-300 font-semibold mb-2">
+            <div class="grow">{{ $strings.LabelFilename }}</div>
+            <div class="w-20">{{ $strings.LabelDuration }}</div>
+            <div class="w-20 hidden md:block text-center">{{ $strings.HeaderChapters }}</div>
+          </div>
+          <div v-for="track in audioTracks" :key="track.ino" class="flex items-center py-2" :class="currentTrackIndex === track.index && isPlayingChapter ? 'bg-success/10' : ''">
+            <div class="grow max-w-[calc(100%-80px)] pr-2">
+              <p class="text-xs truncate max-w-sm">{{ track.metadata.filename }}</p>
+            </div>
+            <div class="w-20" style="min-width: 80px">
+              <p class="text-xs font-mono text-gray-200">{{ $secondsToTimestamp(Math.round(track.duration), false, true) }}</p>
+            </div>
+            <div class="w-20 hidden md:flex justify-center" style="min-width: 80px"><span v-if="(track.chapters || []).length" class="material-symbols text-success text-sm">check</span></div>
+          </div>
         </div>
-        <div v-for="track in audioTracks" :key="track.ino" class="flex items-center py-2" :class="currentTrackIndex === track.index && isPlayingChapter ? 'bg-success/10' : ''">
-          <div class="grow max-w-[calc(100%-80px)] pr-2">
-            <p class="text-xs truncate max-w-sm">{{ track.metadata.filename }}</p>
+        <!-- Cue File Tab -->
+        <div v-if="activeTab === 'cue'" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <p class="text-lg font-semibold">Cue File</p>
+            <div class="flex items-center gap-2">
+              <ui-btn small @click="loadCurrentChaptersAsCue" :disabled="!newChapters.length">Load Current</ui-btn>
+              <ui-btn small @click="setChaptersFromCueFile" :disabled="!cueFileInput.trim()">Parse Cue File</ui-btn>
+            </div>
           </div>
-          <div class="w-20" style="min-width: 80px">
-            <p class="text-xs font-mono text-gray-200">{{ $secondsToTimestamp(Math.round(track.duration), false, true) }}</p>
+          <div class="space-y-2">
+            <p class="text-sm text-gray-300">Paste your cue file content below:</p>
+            <textarea
+              v-model="cueFileInput"
+              placeholder='REM Example cue file format:&#10;FILE "audiobook.flac" WAVE&#10;  TRACK 01 AUDIO&#10;    TITLE "Chapter 1: Introduction"&#10;    INDEX 01 00:00:00&#10;  TRACK 02 AUDIO&#10;    TITLE "Chapter 2: The Beginning"&#10;    INDEX 01 05:30:25&#10;  TRACK 03 AUDIO&#10;    TITLE "Chapter 3: The Middle"&#10;    INDEX 01 12:45:50'
+              class="w-full h-48 p-3 text-sm bg-gray-800 border border-gray-600 rounded-md resize-none focus:border-primary focus:outline-none"
+              style="font-family: 'Courier New', monospace"
+            ></textarea>
+            <p class="text-xs text-gray-400">Supports standard CUE sheet format with TRACK, TITLE, and INDEX entries</p>
           </div>
-          <div class="w-20 hidden md:flex justify-center" style="min-width: 80px"><span v-if="(track.chapters || []).length" class="material-symbols text-success text-sm">check</span></div>
+        </div>
+        <!-- JSON Tab -->
+        <div v-if="activeTab === 'json'" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <p class="text-lg font-semibold">JSON Chapters</p>
+            <div class="flex items-center gap-2">
+              <ui-btn small @click="loadCurrentChaptersAsJson" :disabled="!newChapters.length">Load Current</ui-btn>
+              <ui-btn small @click="setChaptersFromJson" :disabled="!jsonInput.trim()">Parse JSON</ui-btn>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <p class="text-sm text-gray-300">Paste JSON chapter data below:</p>
+            <textarea
+              v-model="jsonInput"
+              placeholder='[&#10;  {"title": "Chapter 1: Introduction", "start": 0},&#10;  {"title": "Chapter 2: The Beginning", "start": 330},&#10;  {"title": "Chapter 3: The Middle", "start": 1250, "end": 2100}&#10;]'
+              class="w-full h-48 p-3 text-sm bg-gray-800 border border-gray-600 rounded-md resize-none focus:border-primary focus:outline-none"
+              style="font-family: 'Courier New', monospace"
+            ></textarea>
+            <p class="text-xs text-gray-400">Array of objects with "title" (string) and "start" (seconds). Optional "end" field.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -318,8 +365,7 @@ export default {
       libraryItem,
       previousRoute
     }
-  },
-  data() {
+  },  data() {
     return {
       newChapters: [],
       selectedChapter: null,
@@ -349,7 +395,11 @@ export default {
       bulkChapterInput: '',
       showBulkChapterModal: false,
       bulkChapterCount: 1,
-      detectedPattern: null
+      detectedPattern: null,
+      activeTab: 'tracks',
+      cueFileInput: '',
+      jsonInput: '',
+      checkChaptersTimeout: null
     }
   },
   computed: {
@@ -391,15 +441,34 @@ export default {
     },
     allChaptersLocked() {
       return this.newChapters.length > 0 && this.newChapters.every((chapter) => this.lockedChapters.has(chapter.id))
+    },
+    chapterSourceTabs() {
+      return [
+        { id: 'tracks', label: 'Audio Tracks' },
+        { id: 'cue', label: 'Cue File' },
+        { id: 'json', label: 'JSON' }
+      ]
     }
-  },
-  methods: {
+  },  methods: {
+    // Debounced version of checkChapters to improve performance
+    debouncedCheckChapters() {
+      // Clear any existing timeout
+      if (this.checkChaptersTimeout) {
+        clearTimeout(this.checkChaptersTimeout)
+      }
+      // Set a new timeout to call checkChapters after 300ms of no changes
+      this.checkChaptersTimeout = setTimeout(() => {
+        this.checkChapters()
+      }, 300)
+    },
+    
     formatNumberWithPadding(number, pattern) {
       if (!pattern || !pattern.hasLeadingZeros || !pattern.originalPadding) {
         return number.toString()
       }
       return number.toString().padStart(pattern.originalPadding, '0')
     },
+
     setChaptersFromTracks() {
       let currentStartTime = 0
       let index = 0
@@ -416,6 +485,229 @@ export default {
       this.newChapters = chapters
 
       this.checkChapters()
+    },
+    setChaptersFromCueFile() {
+      if (!this.cueFileInput.trim()) {
+        this.$toast.error('Please paste cue file content first')
+        return
+      }
+
+      try {
+        const chapters = this.parseCueFile(this.cueFileInput)
+        if (chapters.length === 0) {
+          this.$toast.error('No chapters found in cue file')
+          return
+        }
+
+        this.newChapters = chapters
+        this.checkChapters()
+        this.$toast.success(`Successfully parsed ${chapters.length} chapters from cue file`)
+      } catch (error) {
+        console.error('Failed to parse cue file:', error)
+        this.$toast.error('Failed to parse cue file. Please check the format.')
+      }
+    },
+    setChaptersFromJson() {
+      if (!this.jsonInput.trim()) {
+        this.$toast.error('Please paste JSON content first')
+        return
+      }
+
+      try {
+        const chapters = this.parseJsonChapters(this.jsonInput)
+        if (chapters.length === 0) {
+          this.$toast.error('No chapters found in JSON')
+          return
+        }
+
+        this.newChapters = chapters
+        this.checkChapters()
+        this.$toast.success(`Successfully parsed ${chapters.length} chapters from JSON`)
+      } catch (error) {
+        console.error('Failed to parse JSON:', error)
+        this.$toast.error('Failed to parse JSON. Please check the format.')
+      }
+    },
+    parseCueFile(cueContent) {
+      const lines = cueContent.split('\n').map((line) => line.trim())
+      const chapters = []
+      let currentTrack = null
+      let trackNumber = 0
+
+      for (const line of lines) {
+        // Parse TRACK lines
+        const trackMatch = line.match(/TRACK\s+(\d+)\s+AUDIO/i)
+        if (trackMatch) {
+          if (currentTrack) {
+            chapters.push(currentTrack)
+          }
+          trackNumber = parseInt(trackMatch[1])
+          currentTrack = {
+            id: chapters.length,
+            title: `Track ${trackNumber.toString().padStart(2, '0')}`,
+            start: 0,
+            end: 0
+          }
+          continue
+        }
+
+        // Parse TITLE lines
+        const titleMatch = line.match(/TITLE\s+"([^"]+)"/i)
+        if (titleMatch && currentTrack) {
+          currentTrack.title = titleMatch[1]
+          continue
+        }
+
+        // Parse INDEX lines (typically INDEX 01 for track start)
+        const indexMatch = line.match(/INDEX\s+01\s+(\d{2}):(\d{2}):(\d{2})/i)
+        if (indexMatch && currentTrack) {
+          const minutes = parseInt(indexMatch[1])
+          const seconds = parseInt(indexMatch[2])
+          const frames = parseInt(indexMatch[3])
+          // Convert frames to seconds (75 frames per second for CD audio)
+          const totalSeconds = minutes * 60 + seconds + frames / 75
+          currentTrack.start = Math.floor(totalSeconds)
+          continue
+        }
+      } // Add the last track
+      if (currentTrack) {
+        chapters.push(currentTrack)
+      }
+
+      // Sort by start time, then by title (with natural number ordering)
+      chapters.sort((a, b) => {
+        // Primary sort: by start time
+        if (a.start !== b.start) {
+          return a.start - b.start
+        }
+
+        // Secondary sort: by title with natural number ordering
+        return this.naturalSort(a.title, b.title)
+      })
+
+      // Set end times based on next chapter start times
+      for (let i = 0; i < chapters.length; i++) {
+        if (i < chapters.length - 1) {
+          chapters[i].end = chapters[i + 1].start
+        } else {
+          chapters[i].end = this.mediaDuration || chapters[i].start + 300
+        }
+        chapters[i].id = i
+      }
+
+      return chapters
+    },
+    parseJsonChapters(jsonContent) {
+      let data
+      try {
+        data = JSON.parse(jsonContent)
+      } catch (error) {
+        throw new Error('Invalid JSON format')
+      }
+
+      if (!Array.isArray(data)) {
+        throw new Error('JSON must be an array of chapter objects')
+      }
+
+      const chapters = []
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i]
+
+        if (!item || typeof item !== 'object') {
+          throw new Error(`Chapter ${i + 1} must be an object`)
+        }
+
+        if (!item.title || typeof item.title !== 'string') {
+          throw new Error(`Chapter ${i + 1} must have a title`)
+        }
+
+        if (typeof item.start !== 'number') {
+          throw new Error(`Chapter ${i + 1} must have a numeric start time`)
+        }
+
+        const chapter = {
+          id: i,
+          title: item.title.trim(),
+          start: Math.max(0, Math.floor(item.start)),
+          end: item.end ? Math.floor(item.end) : 0
+        }
+
+        chapters.push(chapter)
+      } // Sort by start time, then by title (with natural number ordering)
+      chapters.sort((a, b) => {
+        // Primary sort: by start time
+        if (a.start !== b.start) {
+          return a.start - b.start
+        }
+
+        // Secondary sort: by title with natural number ordering
+        return this.naturalSort(a.title, b.title)
+      })
+
+      // Set end times if not provided
+      for (let i = 0; i < chapters.length; i++) {
+        chapters[i].id = i
+        if (!chapters[i].end || chapters[i].end <= chapters[i].start) {
+          if (i < chapters.length - 1) {
+            chapters[i].end = chapters[i + 1].start
+          } else {
+            chapters[i].end = this.mediaDuration || chapters[i].start + 300
+          }
+        }
+      }
+      return chapters
+    },
+    loadCurrentChaptersAsCue() {
+      if (!this.newChapters.length) {
+        this.$toast.error('No chapters to convert')
+        return
+      }
+
+      let cueContent = `REM Generated from Audiobookshelf chapters
+FILE "${this.title || 'audiobook'}.wav" WAVE
+`
+
+      this.newChapters.forEach((chapter, index) => {
+        const trackNumber = (index + 1).toString().padStart(2, '0')
+        const startTime = this.secondsToCueTime(chapter.start)
+
+        cueContent += `  TRACK ${trackNumber} AUDIO
+    TITLE "${chapter.title || `Chapter ${index + 1}`}"
+    INDEX 01 ${startTime}
+`
+      })
+
+      this.cueFileInput = cueContent
+      this.$toast.success('Current chapters loaded as CUE format')
+    },
+    loadCurrentChaptersAsJson() {
+      if (!this.newChapters.length) {
+        this.$toast.error('No chapters to convert')
+        return
+      }
+
+      const chaptersData = this.newChapters.map((chapter) => ({
+        title: chapter.title || '',
+        start: chapter.start,
+        end: chapter.end
+      }))
+
+      this.jsonInput = JSON.stringify(chaptersData, null, 2)
+      this.$toast.success('Current chapters loaded as JSON format')
+    },
+    secondsToCueTime(seconds) {
+      const totalSeconds = Math.floor(seconds)
+      const minutes = Math.floor(totalSeconds / 60)
+      const remainingSeconds = totalSeconds % 60
+      const frames = Math.floor((seconds - totalSeconds) * 75) // 75 frames per second for CD audio      return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`
+    },
+    naturalSort(a, b) {
+      // Natural sort that handles numbers within strings correctly
+      // e.g., "Chapter 2" comes before "Chapter 10"
+      return a.localeCompare(b, undefined, {
+        numeric: true,
+        sensitivity: 'base'
+      })
     },
     toggleRemoveBranding() {
       this.removeBranding = !this.removeBranding
@@ -461,10 +753,8 @@ export default {
       }
       if (chapter.start + amount >= this.mediaDuration) {
         return
-      }
-
-      chapter.start = Math.max(0, chapter.start + amount)
-      this.checkChapters()
+      }      chapter.start = Math.max(0, chapter.start + amount)
+      this.debouncedCheckChapters()
     },
     adjustChapterStartTime(chapter) {
       const newStartTime = chapter.start + this.elapsedTime
@@ -552,41 +842,64 @@ export default {
       }
       this.newChapters = this.newChapters.filter((ch) => ch.id !== chapter.id)
       this.checkChapters()
-    },
-    checkChapters() {
+    },    checkChapters() {
       let previousStart = 0
       let hasChanges = this.newChapters.length !== this.chapters.length
 
+      // Use a more efficient approach - batch updates
+      const updates = []
+      
       for (let i = 0; i < this.newChapters.length; i++) {
-        this.newChapters[i].id = i
-        this.newChapters[i].start = Number(this.newChapters[i].start)
-        this.newChapters[i].title = (this.newChapters[i].title || '').trim()
-
-        if (i === 0 && this.newChapters[i].start !== 0) {
-          this.newChapters[i].error = this.$strings.MessageChapterErrorFirstNotZero
-        } else if (this.newChapters[i].start <= previousStart && i > 0) {
-          this.newChapters[i].error = this.$strings.MessageChapterErrorStartLtPrev
-        } else if (this.newChapters[i].start >= this.mediaDuration) {
-          this.newChapters[i].error = this.$strings.MessageChapterErrorStartGteDuration
-        } else {
-          this.newChapters[i].error = null
+        const chapter = this.newChapters[i]
+        const newId = i
+        const newStart = Number(chapter.start)
+        const newTitle = (chapter.title || '').trim()
+        
+        // Only update if values actually changed
+        if (chapter.id !== newId) {
+          updates.push({ index: i, property: 'id', value: newId })
         }
-        previousStart = this.newChapters[i].start
-
-        if (hasChanges) {
-          continue
+        if (chapter.start !== newStart) {
+          updates.push({ index: i, property: 'start', value: newStart })
+        }
+        if (chapter.title !== newTitle) {
+          updates.push({ index: i, property: 'title', value: newTitle })
         }
 
-        const existingChapter = this.chapters[i]
-        if (existingChapter) {
-          const { start, end, title } = this.newChapters[i]
-          if (start !== existingChapter.start || end !== existingChapter.end || title !== existingChapter.title) {
+        // Error checking with current values
+        let error = null
+        if (i === 0 && newStart !== 0) {
+          error = this.$strings.MessageChapterErrorFirstNotZero
+        } else if (newStart <= previousStart && i > 0) {
+          error = this.$strings.MessageChapterErrorStartLtPrev
+        } else if (newStart >= this.mediaDuration) {
+          error = this.$strings.MessageChapterErrorStartGteDuration
+        }
+        
+        if (chapter.error !== error) {
+          updates.push({ index: i, property: 'error', value: error })
+        }
+        
+        previousStart = newStart
+
+        // Check for changes only if we haven't already detected them
+        if (!hasChanges) {
+          const existingChapter = this.chapters[i]
+          if (existingChapter) {
+            const { start, end, title } = chapter
+            if (start !== existingChapter.start || end !== existingChapter.end || title !== existingChapter.title) {
+              hasChanges = true
+            }
+          } else {
             hasChanges = true
           }
-        } else {
-          hasChanges = true
         }
       }
+
+      // Apply all updates in batch
+      updates.forEach(update => {
+        this.newChapters[update.index][update.property] = update.value
+      })
 
       this.hasChanges = hasChanges
     },
@@ -963,9 +1276,14 @@ export default {
     this.initChapters()
 
     this.$eventBus.$on(`${this.libraryItem.id}_updated`, this.libraryItemUpdated)
-  },
-  beforeDestroy() {
+  },  beforeDestroy() {
     this.destroyAudioEl()
+    
+    // Cancel any pending debounced calls
+    if (this.checkChaptersTimeout) {
+      clearTimeout(this.checkChaptersTimeout)
+      this.checkChaptersTimeout = null
+    }
 
     this.$eventBus.$off(`${this.libraryItem.id}_updated`, this.libraryItemUpdated)
   }
