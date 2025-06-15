@@ -27,14 +27,16 @@
     <div class="flex justify-center flex-wrap lg:flex-nowrap gap-4">
       <div class="w-full max-w-2xl border border-white/10 bg-bg">
         <div class="flex py-2 px-4">
-          <div class="w-1/3 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelMetaTag }}</div>
-          <div class="w-2/3 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelValue }}</div>
+          <div class="w-28 min-w-28 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelMetaTag }}</div>
+          <div class="grow text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelValue }}</div>
         </div>
         <div class="w-full max-h-72 overflow-auto">
-          <div v-for="(value, key, index) in metadataObject" :key="key" class="flex py-1 px-4 text-sm" :class="index % 2 === 0 ? 'bg-primary/25' : ''">
-            <div class="w-1/3 font-semibold">{{ key }}</div>
-            <div class="w-2/3">
-              {{ value }}
+          <template v-for="(value, key, index) in metadataObject">
+            <div :key="key" class="flex py-1 px-4 text-sm" :class="index % 2 === 0 ? 'bg-primary/25' : ''">
+              <div class="w-28 min-w-28 font-semibold">{{ key }}</div>
+              <div class="grow">
+                {{ value }}
+              </div>
             </div>
           </div>
         </div>
@@ -42,15 +44,20 @@
       <div class="w-full max-w-2xl border border-white/10 bg-bg">
         <div class="flex py-2 px-4 bg-primary/25">
           <div class="grow text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelChapterTitle }}</div>
-          <div class="w-24 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelStart }}</div>
-          <div class="w-24 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelEnd }}</div>
+          <div class="w-16 min-w-16 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelStart }}</div>
+          <div class="w-16 min-w-16 text-xs font-semibold uppercase text-gray-200">{{ $strings.LabelEnd }}</div>
         </div>
         <div class="w-full max-h-72 overflow-auto">
           <p v-if="!metadataChapters.length" class="py-5 text-center text-gray-200">{{ $strings.MessageNoChapters }}</p>
-          <div v-for="(chapter, index) in metadataChapters" :key="index" class="flex py-1 px-4 text-sm" :class="index % 2 === 1 ? 'bg-primary/25' : ''">
-            <div class="grow font-semibold">{{ chapter.title }}</div>
-            <div class="w-24">
-              {{ $secondsToTimestamp(chapter.start) }}
+          <template v-for="(chapter, index) in metadataChapters">
+            <div :key="index" class="flex py-1 px-4 text-sm" :class="index % 2 === 1 ? 'bg-primary/25' : ''">
+              <div class="grow font-semibold">{{ chapter.title }}</div>
+              <div class="w-16 min-w-16">
+                {{ $secondsToTimestamp(chapter.start) }}
+              </div>
+              <div class="w-16 min-w-16">
+                {{ $secondsToTimestamp(chapter.end) }}
+              </div>
             </div>
             <div class="w-24">
               {{ $secondsToTimestamp(chapter.end) }}
